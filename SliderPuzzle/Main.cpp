@@ -1,6 +1,7 @@
-#include "Windows.h"
-#include <SpriteBatch.h>
+#include <Windows.h>
 #include <memory>
+#include <assert.h>
+#include "Game.h"
 
 static HWND WindowInit(HINSTANCE instance, const wchar_t* class_name, int32_t width, int32_t height);
 static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -13,11 +14,16 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
     return -1;
   }
 
+  std::shared_ptr<Game> game(new Game());
+  if (!game->Init(window))
+  {
+    return -2;
+  }
+  
   ShowWindow(window, SW_SHOW);
   UpdateWindow(window);
 
-  //ID3D11DeviceContext* context = nullptr;
-  //std::shared_ptr<DirectX::SpriteBatch> spriteBatch(new DirectX::SpriteBatch(context));
+
 
   MSG msg {};
   while (msg.message != WM_QUIT)
@@ -29,6 +35,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
     }
     else
     {
+      if (!game->Update())
+      {
+        break;
+      }
+      game->Draw();
     }
   }
 
