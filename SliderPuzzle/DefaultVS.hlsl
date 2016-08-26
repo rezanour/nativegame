@@ -10,10 +10,23 @@ struct VertexOut
     float2 uv : TEXCOORD;
 };
 
+cbuffer VS_CONSTANT_BUFFER
+{
+    float2 pixelOffset;
+    float2 texOffset;
+    float2 screenSize;
+    float2 padding;
+};
+
+
 VertexOut main( Vertex input )
 {
     VertexOut output;
-    output.pos = float4(input.pos, 0, 1);
-    output.uv = input.uv;
+    float2 offset;
+    offset.x = pixelOffset.x / screenSize.x * 2;
+    offset.y = -(pixelOffset.y / screenSize.y * 2);
+    float2 newPos = input.pos + offset;
+    output.pos = float4(newPos, 0, 1);
+    output.uv = input.uv + texOffset;
 	return output;
 }

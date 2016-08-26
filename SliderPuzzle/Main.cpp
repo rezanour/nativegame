@@ -1,10 +1,13 @@
 #include <Windows.h>
+#include <windowsx.h>
 #include <memory>
 #include <assert.h>
 #include "Game.h"
 
 static HWND WindowInit(HINSTANCE instance, const wchar_t* class_name, int32_t width, int32_t height);
 static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+static MouseState mouseState{};
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
 {
@@ -35,10 +38,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
         }
         else
         {
-            if (!game->Update())
+            if (!game->Update(mouseState))
             {
                 break;
             }
+            mouseState.clicked = false;
             game->Draw();
         }
     }
@@ -92,6 +96,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         {
             PostQuitMessage(0);
         }
+        break;
+
+    case WM_LBUTTONUP:
+        mouseState.clicked = true;
+        mouseState.x = GET_X_LPARAM(lParam);
+        mouseState.y = GET_Y_LPARAM(lParam);
         break;
     }
 
