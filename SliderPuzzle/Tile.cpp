@@ -52,3 +52,13 @@ Vector2 Tile::GetTexCoords() const
 {
     return _texcoords;
 }
+
+void Tile::SetPosition(const Vector2& newPos)
+{
+    _position = newPos;
+}
+
+bool Tile::IsCorrectPosition()
+{
+    return ((_position - _initPos).Length() < 0.001);
+}

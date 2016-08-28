@@ -2,6 +2,7 @@
 #include <SpriteBatch.h>
 #include <assert.h>
 #include <WICTextureLoader.h>
+#include <time.h>
 #include "Game.h"
 #include "Tile.h"
 #include "DefaultVS.h"
@@ -40,12 +41,7 @@ Game::Game()
     _numTiles = _difficulty * _difficulty - 1;
     _tileSize = 720 * 0.9f / _difficulty;
 
-    for (int i = 0; i < _numTiles; i++)
-    {
-        _tiles.push_back(Tile(_difficulty, Vector2(float(i % _difficulty), float(i / _difficulty))));
-    }
-
-    _emptyTile = Vector2(float(_difficulty - 1), float(_difficulty - 1));
+    InitializeTiles();
 }
 
 Game::~Game()
@@ -163,22 +159,17 @@ bool Game::Init(HWND window)
     hr = _device->CreateInputLayout(inputElems, _countof(inputElems), DefaultVS, sizeof(DefaultVS), &_inputLayout);
     CHECKHR(hr);
 
-    _context->IASetInputLayout(_inputLayout.Get());
-    _context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    UINT vertexStride = sizeof(Vertex);
-    UINT vertexOffset = 0;
-    _context->IASetVertexBuffers(0, 1, _vertexBuffer.GetAddressOf(), &vertexStride, &vertexOffset);
-    _context->VSSetShader(_defaultVS.Get(), nullptr, 0);
-    _context->VSSetConstantBuffers(0, 1, _vertexConstBuffer.GetAddressOf());
-
     ComPtr<ID3D11Resource> bgImage;
     //hr = DirectX::CreateWICTextureFromFile(_device.Get(), L"dk.png", bgImage.ReleaseAndGetAddressOf(), &_srvBackground);
     CHECKHR(hr);    
     hr = DirectX::CreateWICTextureFromFile(_device.Get(), L"tileimage.jpg", bgImage.ReleaseAndGetAddressOf(), &_srvTile);
     CHECKHR(hr);
-    _context->PSSetShader(_defaultPS.Get(), nullptr, 0);
-    _context->PSSetSamplers(0, 1, _sampler.GetAddressOf());
-    _context->PSSetConstantBuffers(0, 1, _pixelConstBuffer.GetAddressOf());
+
+    //Sprite Batch / Sprite Font
+    _spriteBatch.reset(new DirectX::SpriteBatch(_context.Get()));
+    _spriteBatch->SetViewport(viewport);
+
+    _spriteFont.reset(new DirectX::SpriteFont(_device.Get(), L"default.spritefont"));
 
     return true;
 }
@@ -198,6 +189,11 @@ bool Game::Update(const MouseState& mouseState)
         dir.Normalize();
         _tileAnim.currPos += increment * dir;
         _tileAnim.isAnimating = (_tileAnim.endpoint - _tileAnim.currPos).Length() > 0.001;
+        if (!_tileAnim.isAnimating && CheckPuzzle())
+        {
+            //End game stuff
+            return false;
+        }
     }
     else if (mouseState.clicked)
     {
@@ -248,9 +244,17 @@ void Game::Draw()
 {
     float background[4] = { 0, 0, 0.5, 1 };
     _context->ClearRenderTargetView(_backBuffer.Get(), background);
+    _context->IASetInputLayout(_inputLayout.Get());
+    _context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    UINT vertexStride = sizeof(Vertex);
+    UINT vertexOffset = 0;
+    _context->IASetVertexBuffers(0, 1, _vertexBuffer.GetAddressOf(), &vertexStride, &vertexOffset);
+    _context->VSSetShader(_defaultVS.Get(), nullptr, 0);
+    _context->VSSetConstantBuffers(0, 1, _vertexConstBuffer.GetAddressOf());
+    _context->PSSetShader(_defaultPS.Get(), nullptr, 0);
+    _context->PSSetSamplers(0, 1, _sampler.GetAddressOf());
+    _context->PSSetConstantBuffers(0, 1, _pixelConstBuffer.GetAddressOf());
 
-    //Render everything here
-    
     //Draw background
     //_context->PSSetShaderResources(0, 1, _srvBackground.GetAddressOf());
     //UpdateConstBuffer(Vector2::Zero, Vector2::Zero, false);
@@ -270,6 +274,11 @@ void Game::Draw()
         _context->Draw(6, 6);
     }
 
+    //Draw text
+    _spriteBatch->Begin();
+    _spriteFont->DrawString(_spriteBatch.get(), L"Gooz master zero", Vector2(900, 100), Vector4(1, 1, 0, 1));
+    _spriteBatch->End();
+
     _swapChain->Present(1, 0);
 }
 
@@ -280,4 +289,93 @@ bool Game::UpdateConstBuffer(const Vector2& pos, const Vector2& texCoords, bool 
     PixelConst tilePSConst = { pos.x, pos.y, _tileSize, drawBorder ? 1 : 0 };
     _context->UpdateSubresource(_pixelConstBuffer.Get(), 0, nullptr, &tilePSConst, sizeof(PixelConst), sizeof(PixelConst));
     return true;
+}
+
+void Game::InitializeTiles()
+{
+    int shuffles = 10;
+    int current = 0;
+    for (int i = 0; i < _numTiles; i++)
+    {
+        _tiles.push_back(Tile(_difficulty, Vector2(float(i % _difficulty), float(i / _difficulty))));
+    }
+
+    _emptyTile = Vector2(float(_difficulty - 1), float(_difficulty - 1));
+    srand(UINT(time(nullptr)));
+    
+    while (current < shuffles)
+    //for (int i = 0; i < 100; i++)
+    {
+        if (_tileAnim.isAnimating)
+        {
+            Vector2 dir = _tileAnim.endpoint - _tileAnim.currPos;
+            float length = dir.Length();
+            float increment = min(length, _tileAnim.increment);
+            dir.Normalize();
+            _tileAnim.currPos += increment * dir;
+            _tileAnim.isAnimating = (_tileAnim.endpoint - _tileAnim.currPos).Length() > 0.001;
+        }
+
+        if (!_tileAnim.isAnimating)
+        {
+            std::vector<Vector2> possibleDirs;
+            if (_emptyTile.x < _difficulty - 1)  // Empty can move right
+            {
+                possibleDirs.push_back(Vector2(1, 0));
+            }
+            if (_emptyTile.x > 0)  // Empty can move left
+            {
+                possibleDirs.push_back(Vector2(-1, 0));
+            }
+            if (_emptyTile.y < _difficulty - 1)  // Empty can move down
+            {
+                possibleDirs.push_back(Vector2(0, 1));
+            }
+            if (_emptyTile.y > 0)  // Empty can move up
+            {
+                possibleDirs.push_back(Vector2(0, -1));
+            }
+
+            int dir = rand() % possibleDirs.size();
+            Vector2 tileToMove = _emptyTile + possibleDirs[dir];
+
+            //TODO: Make a Board object that manages all tile positions
+            for (int i = 0; i < _numTiles; i++)
+            {
+                if ((_tiles[i].GetPosition() - tileToMove).Length() < 0.001f)
+                {
+                    //Could figure direction and actually slide
+                    if ((possibleDirs[dir] - Vector2(1, 0)).Length() < 0.001f)
+                    {
+                        _tileAnim.isAnimating = true;
+                        _emptyTile = tileToMove;
+                        _tiles[i].SlideLeft();
+                        break;
+                    }
+                    else
+                    {
+                        _tiles[i].SetPosition(_emptyTile);
+                        _emptyTile = tileToMove;
+                        break;
+                    }
+                }
+            }
+            current++;
+        }
+    }
+}
+
+bool Game::CheckPuzzle() 
+{
+    bool win = true;
+
+    for (int i = 0; i < _numTiles; i++)
+    {
+        if (!_tiles[i].IsCorrectPosition()) {
+            win = false;
+            break;
+        }
+    }
+
+    return win;
 }

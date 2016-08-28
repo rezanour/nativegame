@@ -4,6 +4,8 @@
 #include <wrl.h>
 #include <SimpleMath.h>
 #include <vector>
+#include <SpriteBatch.h>
+#include <SpriteFont.h>
 
 class Tile;
 
@@ -46,6 +48,8 @@ public:
 
 private:
     bool UpdateConstBuffer(const DirectX::SimpleMath::Vector2& position, const DirectX::SimpleMath::Vector2& texCoords, bool drawBorder);
+    void InitializeTiles();
+    bool CheckPuzzle();
 
     int _difficulty;
     std::vector<Tile> _tiles;
@@ -67,4 +71,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> _srvBackground;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> _srvTile;
     Microsoft::WRL::ComPtr<ID3D11SamplerState> _sampler;
+
+    std::shared_ptr<DirectX::SpriteBatch> _spriteBatch;
+    std::shared_ptr<DirectX::SpriteFont> _spriteFont;
 };
