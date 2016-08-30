@@ -40,9 +40,9 @@ public:
 
     Game();
     ~Game();
+
     bool Init(HWND window);
     int GetDifficulty() const;
-
     bool Update(const MouseState& mouseState);
     void Draw();
 
@@ -50,20 +50,30 @@ private:
     bool UpdateConstBuffer(const DirectX::SimpleMath::Vector2& position, const DirectX::SimpleMath::Vector2& texCoords, bool drawBorder);
     void InitializeTiles();
     bool CheckPuzzle();
+	void MeasureMenuStrings();
 
     int _difficulty;
+	bool _atMenu;
     std::vector<Tile> _tiles;
     int _numTiles;
     float _tileSize;
     DirectX::SimpleMath::Vector2 _emptyTile;
     TileAnimation _tileAnim{};
 
+	//Menu options
+	DirectX::SimpleMath::Rectangle _menuTitle;
+	DirectX::SimpleMath::Rectangle _menuEasy;
+	DirectX::SimpleMath::Rectangle _menuMedium;
+	DirectX::SimpleMath::Rectangle _menuHard;
+	DirectX::SimpleMath::Rectangle _menuVeryHard;
+
     Microsoft::WRL::ComPtr<ID3D11Device> _device;
     Microsoft::WRL::ComPtr<ID3D11DeviceContext> _context;
     Microsoft::WRL::ComPtr<IDXGISwapChain> _swapChain;
     Microsoft::WRL::ComPtr<ID3D11RenderTargetView> _backBuffer;
-    Microsoft::WRL::ComPtr<ID3D11Buffer> _vertexBuffer;
-    Microsoft::WRL::ComPtr<ID3D11Buffer> _vertexConstBuffer;
+	Microsoft::WRL::ComPtr<ID3D11Buffer> _vertexBuffer;
+	Microsoft::WRL::ComPtr<ID3D11Buffer> _tileVertexBuffer;
+	Microsoft::WRL::ComPtr<ID3D11Buffer> _vertexConstBuffer;
     Microsoft::WRL::ComPtr<ID3D11Buffer> _pixelConstBuffer;
     Microsoft::WRL::ComPtr<ID3D11VertexShader> _defaultVS;
     Microsoft::WRL::ComPtr<ID3D11PixelShader> _defaultPS;
