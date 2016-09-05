@@ -26,10 +26,16 @@ struct TileAnimation
     DirectX::SimpleMath::Vector2 endpoint;
     DirectX::SimpleMath::Vector2 currPos;
 };
+
 struct MouseState
 {
     bool clicked;
     int x, y;
+};
+
+struct WindowSize
+{
+	int width, height;
 };
 
 class Game
@@ -59,6 +65,7 @@ private:
     float _tileSize;
     DirectX::SimpleMath::Vector2 _emptyTile;
     TileAnimation _tileAnim{};
+	time_t gameTimer;
 
 	//Menu options
 	DirectX::SimpleMath::Rectangle _menuTitle;

@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <WICTextureLoader.h>
 #include <time.h>
+#include <string>
 #include "Game.h"
 #include "Tile.h"
 #include "DefaultVS.h"
@@ -167,6 +168,7 @@ int Game::GetDifficulty() const
 
 bool Game::Update(const MouseState& mouseState)
 {
+	time(&gameTimer);
 	if (_atMenu)
 	{
 		if (mouseState.clicked)
@@ -198,6 +200,7 @@ bool Game::Update(const MouseState& mouseState)
 
 			if (itemClicked)
 			{
+				_tiles.clear();
 				_numTiles = _difficulty * _difficulty - 1;
 				_tileSize = 720 * 0.9f / _difficulty;
 				InitializeTiles();
@@ -319,7 +322,7 @@ void Game::Draw()
 
 		//Draw text
 		_spriteBatch->Begin();
-		_spriteFont->DrawString(_spriteBatch.get(), L"Gooz", Vector2(900, 100), Vector4(1, 1, 0, 1));
+		_spriteFont->DrawString(_spriteBatch.get(), std::to_wstring((int)gameTimer).c_str(), Vector2(900, 100), Vector4(1, 1, 0, 1));
 		_spriteBatch->End();
 	}
 

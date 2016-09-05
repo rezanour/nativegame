@@ -8,10 +8,14 @@ static HWND WindowInit(HINSTANCE instance, const wchar_t* class_name, int32_t wi
 static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 static MouseState mouseState{};
+static WindowSize windowSize{};
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int)
 {
     HWND window = WindowInit(instance, L"SliderPuzzle", 1280, 720);
+	windowSize.width = 1280;
+	windowSize.height = 720;
+
     if (!window)
     {
         return -1;
@@ -100,10 +104,15 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
     case WM_LBUTTONUP:
         mouseState.clicked = true;
-        mouseState.x = GET_X_LPARAM(lParam);
-        mouseState.y = GET_Y_LPARAM(lParam);
+        mouseState.x = GET_X_LPARAM(lParam) * Game::SCREEN_WIDTH / windowSize.width;
+        mouseState.y = GET_Y_LPARAM(lParam) * Game::SCREEN_HEIGHT / windowSize.height;
         break;
-    }
+
+	case WM_SIZE:
+		windowSize.width = LOWORD(lParam);
+		windowSize.height = HIWORD(lParam);
+		break;
+	}
 
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
