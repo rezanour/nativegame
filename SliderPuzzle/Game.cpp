@@ -168,7 +168,6 @@ int Game::GetDifficulty() const
 
 bool Game::Update(const MouseState& mouseState)
 {
-	time(&gameTimer);
 	if (_atMenu)
 	{
 		if (mouseState.clicked)
@@ -205,11 +204,13 @@ bool Game::Update(const MouseState& mouseState)
 				_tileSize = 720 * 0.9f / _difficulty;
 				InitializeTiles();
 				_atMenu = false;
+				time(&_gameStartTime);
 			}
 		}
 	}
 	else
 	{
+		time(&_gameTimer);
 		if (_tileAnim.isAnimating)
 		{
 			Vector2 dir = _tileAnim.endpoint - _tileAnim.currPos;
@@ -321,8 +322,8 @@ void Game::Draw()
 		}
 
 		//Draw text
-		_spriteBatch->Begin();
-		_spriteFont->DrawString(_spriteBatch.get(), std::to_wstring((int)gameTimer).c_str(), Vector2(900, 100), Vector4(1, 1, 0, 1));
+		_spriteBatch->Begin(); 
+		_spriteFont->DrawString(_spriteBatch.get(), GetFormattedTime(difftime(_gameTimer, _gameStartTime)), Vector2(900, 100), Vector4(1, 1, 0, 1));
 		_spriteBatch->End();
 	}
 
@@ -461,4 +462,16 @@ bool Game::CheckPuzzle()
 	}
 
 	return win;
+}
+
+wchar_t* Game::GetFormattedTime(const double time)
+{
+	int intTime = int(time);
+	int hours = intTime / 60 / 60;
+	int minutes = intTime / 60 - (hours * 60);
+	int seconds = intTime % 60;
+	wchar_t* formatted;
+	
+	swprintf(formatted, L"%d:%d:%d", hours, minutes, seconds);
+	return formatted;
 }

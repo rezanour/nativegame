@@ -57,6 +57,7 @@ private:
     void InitializeTiles();
     bool CheckPuzzle();
 	void MeasureMenuStrings();
+	wchar_t* GetFormattedTime(const double time);
 
     int _difficulty;
 	bool _atMenu;
@@ -65,7 +66,8 @@ private:
     float _tileSize;
     DirectX::SimpleMath::Vector2 _emptyTile;
     TileAnimation _tileAnim{};
-	time_t gameTimer;
+	time_t _gameTimer;
+	time_t _gameStartTime;
 
 	//Menu options
 	DirectX::SimpleMath::Rectangle _menuTitle;
