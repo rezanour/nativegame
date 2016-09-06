@@ -4,10 +4,12 @@
 #include <WICTextureLoader.h>
 #include <time.h>
 #include <string>
+#include <atlstr.h>
 #include "Game.h"
 #include "Tile.h"
 #include "DefaultVS.h"
 #include "DefaultPS.h"
+#include "Blur"
 
 using namespace Microsoft::WRL;
 using namespace DirectX::SimpleMath;
@@ -464,14 +466,27 @@ bool Game::CheckPuzzle()
 	return win;
 }
 
-wchar_t* Game::GetFormattedTime(const double time)
+const wchar_t* Game::GetFormattedTime(const double time)
 {
 	int intTime = int(time);
 	int hours = intTime / 60 / 60;
 	int minutes = intTime / 60 - (hours * 60);
 	int seconds = intTime % 60;
-	wchar_t* formatted;
-	
-	swprintf(formatted, L"%d:%d:%d", hours, minutes, seconds);
+	CStringW formatted;
+	std::wstring format = L"%d:";
+
+	if (minutes < 10)
+	{
+		format = format + L"0";
+	}	
+	format = format + L"%d:";
+	if (seconds < 10)
+	{
+		format = format + L"0";
+	}
+	format = format + L"%d";
+
+
+	formatted.Format(format.c_str(), hours, minutes, seconds);
 	return formatted;
 }

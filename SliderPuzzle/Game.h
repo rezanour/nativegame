@@ -57,7 +57,7 @@ private:
     void InitializeTiles();
     bool CheckPuzzle();
 	void MeasureMenuStrings();
-	wchar_t* GetFormattedTime(const double time);
+	const wchar_t* GetFormattedTime(const double time);
 
     int _difficulty;
 	bool _atMenu;

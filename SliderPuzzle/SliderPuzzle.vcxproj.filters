@@ -40,5 +40,8 @@
     <FxCompile Include="DefaultPS.hlsl">
       <Filter>Resource Files</Filter>
     </FxCompile>
+    <FxCompile Include="BlurPS.hlsl">
+      <Filter>Resource Files</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>

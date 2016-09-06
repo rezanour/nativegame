@@ -100,6 +100,7 @@
     <ClInclude Include="Tile.h" />
   </ItemGroup>
   <ItemGroup>
+    <FxCompile Include="BlurPS.hlsl" />
     <FxCompile Include="DefaultPS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
