@@ -9,7 +9,7 @@
 #include "Tile.h"
 #include "DefaultVS.h"
 #include "DefaultPS.h"
-#include "Blur"
+#include "BlurPS.h"
 
 using namespace Microsoft::WRL;
 using namespace DirectX::SimpleMath;
@@ -28,7 +28,7 @@ struct VertexConst
 	float offsetX, offsetY;
 	float texOffsetX, texOffsetY;
 	float screenWidth, screenHeight;
-	float pad0, pad1;
+	float stretchX, stretchY;
 };
 
 struct PixelConst
@@ -36,6 +36,12 @@ struct PixelConst
 	float tileX, tileY;
 	float tileSize;
 	int enabled;
+};
+
+struct BlurPixelConst
+{
+	Vector2 direction;
+	float pad0, pad1;
 };
 
 Game::Game()
@@ -80,8 +86,65 @@ bool Game::Init(HWND window)
 
 	hr = _device->CreateRenderTargetView(backbuffer.Get(), nullptr, &_backBuffer);
 	CHECKHR(hr);
-
 	_context->OMSetRenderTargets(1, _backBuffer.GetAddressOf(), nullptr);
+
+	//Create render target text for blur
+	D3D11_TEXTURE2D_DESC textureDesc{};
+	D3D11_RENDER_TARGET_VIEW_DESC rtvDesc{};
+	D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+
+	textureDesc.Width = SCREEN_WIDTH;
+	textureDesc.Height = SCREEN_HEIGHT;
+	textureDesc.MipLevels = 1;
+	textureDesc.ArraySize = 1;
+	textureDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	textureDesc.SampleDesc.Count = 1;
+	textureDesc.Usage = D3D11_USAGE_DEFAULT;
+	textureDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+
+	hr = _device->CreateTexture2D(&textureDesc, nullptr, &_blurTexturePass1);
+	CHECKHR(hr);
+	hr = _device->CreateTexture2D(&textureDesc, nullptr, &_blurTexturePass2);
+	CHECKHR(hr);
+
+	srvDesc.Format = textureDesc.Format;
+	srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Texture2D.MostDetailedMip = 0;
+	srvDesc.Texture2D.MipLevels = 1;
+
+	hr = _device->CreateShaderResourceView(_blurTexturePass1.Get(), &srvDesc, &_blurResourcePass1);
+	CHECKHR(hr);
+	hr = _device->CreateShaderResourceView(_blurTexturePass2.Get(), &srvDesc, &_blurResourcePass2);
+	CHECKHR(hr);
+
+	rtvDesc.Format = textureDesc.Format;
+	rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+	hr = _device->CreateRenderTargetView(_blurTexturePass1.Get(), &rtvDesc, &_blurTargetPass1);
+	CHECKHR(hr);
+	hr = _device->CreateRenderTargetView(_blurTexturePass2.Get(), &rtvDesc, &_blurTargetPass2);
+	CHECKHR(hr);
+
+	//Create yellow texture for puzzle border
+	float texArray[] = { 1.f, 1.f, 0.f, 1.f };
+
+	textureDesc.Width = 1;
+	textureDesc.Height = 1;
+	textureDesc.MipLevels = 1;
+	textureDesc.ArraySize = 1;
+	textureDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	textureDesc.SampleDesc.Count = 1;
+	textureDesc.Usage = D3D11_USAGE_DEFAULT;
+	textureDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+	D3D11_SUBRESOURCE_DATA yellowTexSubData{};
+	yellowTexSubData.pSysMem = texArray;
+	yellowTexSubData.SysMemPitch = sizeof(float) * 4;
+	yellowTexSubData.SysMemSlicePitch = sizeof(float) * 4;
+
+	hr = _device->CreateTexture2D(&textureDesc, &yellowTexSubData, &_yellowTex);
+	CHECKHR(hr);
+	hr = _device->CreateShaderResourceView(_yellowTex.Get(), 0, &_srvYellow);
+	CHECKHR(hr);
 
 	D3D11_VIEWPORT viewport{};
 	viewport.Width = float(SCREEN_WIDTH);
@@ -124,6 +187,12 @@ bool Game::Init(HWND window)
 	hr = _device->CreateBuffer(&bufferDesc, nullptr, &_pixelConstBuffer);
 	CHECKHR(hr);
 
+	bufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	bufferDesc.StructureByteStride = sizeof(BlurPixelConst);
+	bufferDesc.ByteWidth = bufferDesc.StructureByteStride;
+	hr = _device->CreateBuffer(&bufferDesc, nullptr, &_blurConstBuffer);
+	CHECKHR(hr);
+
 	D3D11_SAMPLER_DESC samplerDesc{};
 	samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
 	samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
@@ -133,6 +202,8 @@ bool Game::Init(HWND window)
 	hr = _device->CreateVertexShader(DefaultVS, sizeof(DefaultVS), nullptr, &_defaultVS);
 	CHECKHR(hr);
 	hr = _device->CreatePixelShader(DefaultPS, sizeof(DefaultPS), nullptr, &_defaultPS);
+	CHECKHR(hr);
+	hr = _device->CreatePixelShader(BlurPS, sizeof(BlurPS), nullptr, &_blurPS);
 	CHECKHR(hr);
 	hr = _device->CreateSamplerState(&samplerDesc, &_sampler);
 	CHECKHR(hr);
@@ -277,7 +348,6 @@ void Game::Draw()
 {
 	float background[4] = { 0, 0, 0.5, 1 };
 	_context->ClearRenderTargetView(_backBuffer.Get(), background);
-
 	_context->IASetInputLayout(_inputLayout.Get());
 	_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	UINT vertexStride = sizeof(Vertex);
@@ -292,8 +362,32 @@ void Game::Draw()
 	{
 		//Draw menu background
 		_context->IASetVertexBuffers(0, 1, _vertexBuffer.GetAddressOf(), &vertexStride, &vertexOffset);
+
+		//draw background to first blur target
 		_context->PSSetShaderResources(0, 1, _srvBackground.GetAddressOf());
-		UpdateConstBuffer(Vector2::Zero, Vector2::Zero, false);
+		_context->PSSetShader(_blurPS.Get(), nullptr, 0);
+		_context->PSSetConstantBuffers(0, 1, _blurConstBuffer.GetAddressOf());
+		UpdateConstBuffer(Vector2::Zero, Vector2::Zero, _tileSize, false);
+		UpdateBlurConstBuffer(Vector2(0.f, 1.f));
+		_context->OMSetRenderTargets(1, _blurTargetPass1.GetAddressOf(), nullptr);
+		_context->Draw(6, 0);
+
+		//draw from first blur target and do first blur pass
+		_context->OMSetRenderTargets(1, _blurTargetPass2.GetAddressOf(), nullptr);
+		_context->PSSetShaderResources(0, 1, _blurResourcePass1.GetAddressOf());
+		_context->PSSetShader(_blurPS.Get(), nullptr, 0);
+		_context->PSSetConstantBuffers(0, 1, _blurConstBuffer.GetAddressOf());
+		UpdateConstBuffer(Vector2::Zero, Vector2::Zero, _tileSize, false);
+		UpdateBlurConstBuffer(Vector2(1.f, 0.f));
+		_context->Draw(6, 0);
+
+		//draw from second blur target and do second blur pass
+		_context->OMSetRenderTargets(1, _backBuffer.GetAddressOf(), nullptr);
+		_context->PSSetShaderResources(0, 1, _blurResourcePass2.GetAddressOf());
+		_context->PSSetShader(_blurPS.Get(), nullptr, 0);
+		_context->PSSetConstantBuffers(0, 1, _blurConstBuffer.GetAddressOf());
+		UpdateConstBuffer(Vector2::Zero, Vector2::Zero, _tileSize, false);
+		UpdateBlurConstBuffer(Vector2(0.f, 1.f));
 		_context->Draw(6, 0);
 
 		//Draw text
@@ -303,11 +397,23 @@ void Game::Draw()
 		_spriteFont->DrawString(_spriteBatch.get(), L"Medium", Vector2(float(_menuMedium.x), float(_menuMedium.y)), Vector4(1, 1, 1, 1));
 		_spriteFont->DrawString(_spriteBatch.get(), L"Hard", Vector2(float(_menuHard.x), float(_menuHard.y)), Vector4(1, 1, 1, 1));
 		_spriteFont->DrawString(_spriteBatch.get(), L"Very Hard", Vector2(float(_menuVeryHard.x), float(_menuVeryHard.y)), Vector4(1, 1, 1, 1));
+		
 		_spriteBatch->End();
 
 	}
 	else
 	{
+		_context->IASetVertexBuffers(0, 1, _borderVertexBuffer.GetAddressOf(), &vertexStride, &vertexOffset);
+
+		//draw puzzle border
+		_context->PSSetShaderResources(0, 1, _srvYellow.GetAddressOf());
+		_context->PSSetShader(_defaultPS.Get(), nullptr, 0);
+		_context->PSSetConstantBuffers(0, 1, _pixelConstBuffer.GetAddressOf());
+		UpdateConstBuffer(Vector2::Zero, Vector2::Zero, _tileSize * _difficulty, false);
+		_context->OMSetRenderTargets(1, _backBuffer.GetAddressOf(), nullptr);
+		_context->Draw(24, 0);
+
+
 		//Draw tiles
 		_context->IASetVertexBuffers(0, 1, _tileVertexBuffer.GetAddressOf(), &vertexStride, &vertexOffset);
 		_context->PSSetShaderResources(0, 1, _srvTile.GetAddressOf());
@@ -319,7 +425,10 @@ void Game::Draw()
 			{
 				tilePos = _tileAnim.currPos;
 			}
-			UpdateConstBuffer(tilePos * _tileSize, _tiles[i].GetTexCoords(), true);
+			tilePos *= _tileSize;
+			tilePos.x += 5.f;
+			tilePos.y += 5.f;
+			UpdateConstBuffer(tilePos, _tiles[i].GetTexCoords(), _tileSize, true);
 			_context->Draw(6, 0);
 		}
 
@@ -332,12 +441,21 @@ void Game::Draw()
 	_swapChain->Present(1, 0);
 }
 
-bool Game::UpdateConstBuffer(const Vector2& pos, const Vector2& texCoords, bool drawBorder)
+bool Game::UpdateConstBuffer(const Vector2& pos, const Vector2& texCoords, float size, bool drawBorder)
 {
-	VertexConst tileVSConst = { pos.x, pos.y, texCoords.x, texCoords.y, 1280.f, 720.f };
+	VertexConst tileVSConst = { pos.x, pos.y, texCoords.x, texCoords.y, 1280.f, 720.f, size, size };
 	_context->UpdateSubresource(_vertexConstBuffer.Get(), 0, nullptr, &tileVSConst, sizeof(VertexConst), sizeof(VertexConst));
-	PixelConst tilePSConst = { pos.x, pos.y, _tileSize, drawBorder ? 1 : 0 };
+	PixelConst tilePSConst = { pos.x, pos.y, size, drawBorder ? 1 : 0 };
 	_context->UpdateSubresource(_pixelConstBuffer.Get(), 0, nullptr, &tilePSConst, sizeof(PixelConst), sizeof(PixelConst));
+	return true;
+}
+
+
+bool Game::UpdateBlurConstBuffer(const Vector2& direction)
+{
+	BlurPixelConst blurPSConst = {};
+	blurPSConst.direction = direction;
+	_context->UpdateSubresource(_blurConstBuffer.Get(), 0, nullptr, &blurPSConst, sizeof(BlurPixelConst), sizeof(BlurPixelConst));
 	return true;
 }
 
@@ -431,7 +549,7 @@ void Game::InitializeTiles()
 	Vertex vertices[] =
 	{
 		//tile
-		{ -1, 1, 0, 0 },
+		{ -1 , 1, 0, 0 },
 		{ -1 + (screenMarginX / _difficulty), 1, 1.f / _difficulty, 0 },
 		{ -1, 1 - (screenMarginY / _difficulty), 0, 1.f / _difficulty },
 		{ -1, 1 - (screenMarginY / _difficulty), 0, 1.f / _difficulty },
@@ -449,6 +567,47 @@ void Game::InitializeTiles()
 	vertexSubData.SysMemPitch = bufferDesc.ByteWidth;
 	vertexSubData.SysMemSlicePitch = bufferDesc.ByteWidth;
 	_device->CreateBuffer(&bufferDesc, &vertexSubData, &_tileVertexBuffer);
+
+	Vertex border[] =
+	{
+		//top
+		{ -1, 1, 0, 0 },
+		{ -1 + screenMarginX + 20.f / SCREEN_WIDTH, 1, 0, 0 },
+		{ -1, 1 - 10.f / SCREEN_HEIGHT, 0, 0 },
+		{ -1, 1 - 10.f / SCREEN_HEIGHT, 0, 0 },
+		{ -1 + screenMarginX + 20.f / SCREEN_WIDTH, 1, 0, 0 },
+		{ -1 + screenMarginX + 20.f / SCREEN_WIDTH, 1 - 10.f / SCREEN_HEIGHT, 0, 0 },
+		//right
+		{ -1 + screenMarginX + 10.f / SCREEN_WIDTH, 1 - 10.f / SCREEN_HEIGHT, 0, 0 },
+		{ -1 + screenMarginX + 20.f / SCREEN_WIDTH, 1 - 10.f / SCREEN_HEIGHT, 0, 0 },
+		{ -1 + screenMarginX + 10.f / SCREEN_WIDTH, 1 - screenMarginY - 10.f / SCREEN_HEIGHT, 0, 0 },
+		{ -1 + screenMarginX + 10.f / SCREEN_WIDTH, 1 - screenMarginY - 10.f / SCREEN_HEIGHT, 0, 0 },
+		{ -1 + screenMarginX + 20.f / SCREEN_WIDTH, 1 - 10.f / SCREEN_HEIGHT, 0, 0 },
+		{ -1 + screenMarginX + 20.f / SCREEN_WIDTH, 1 - screenMarginY - 10.f / SCREEN_HEIGHT, 0, 0 },
+		//bottom
+		{ -1, 1 - screenMarginY - 10.f / SCREEN_HEIGHT, 0, 0 },
+		{ -1 + screenMarginX + 20.f / SCREEN_WIDTH, 1 - screenMarginY - 10.f / SCREEN_HEIGHT, 0, 0 },
+		{ -1, 1 - screenMarginY - 20.f / SCREEN_HEIGHT, 0, 0 },
+		{ -1, 1 - screenMarginY - 20.f / SCREEN_HEIGHT, 0, 0 },
+		{ -1 + (screenMarginX)+20.f / SCREEN_WIDTH, 1 - screenMarginY - 10.f / SCREEN_HEIGHT, 0, 0 },
+		{ -1 + (screenMarginX)+20.f / SCREEN_WIDTH, 1 - screenMarginY - 20.f / SCREEN_HEIGHT, 0, 0 },
+		//left
+		{ -1, 1 - 10.f / SCREEN_HEIGHT, 0, 0 },
+		{ -1 + 10.f / SCREEN_WIDTH, 1 - 10.f / SCREEN_HEIGHT, 0, 0 },
+		{ -1, 1 - screenMarginY - 10.f / SCREEN_HEIGHT, 0, 0 },
+		{ -1, 1 - screenMarginY - 10.f / SCREEN_HEIGHT, 0, 0 },
+		{ -1 + 10.f / SCREEN_WIDTH, 1 - 10.f / SCREEN_HEIGHT, 0, 0 },
+		{ -1 + 10.f / SCREEN_WIDTH, 1 - screenMarginY - 10.f / SCREEN_HEIGHT, 0, 0 },
+	};
+
+	bufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+	bufferDesc.StructureByteStride = sizeof(Vertex);
+	bufferDesc.ByteWidth = bufferDesc.StructureByteStride * _countof(border);
+
+	vertexSubData.pSysMem = border;
+	vertexSubData.SysMemPitch = bufferDesc.ByteWidth;
+	vertexSubData.SysMemSlicePitch = bufferDesc.ByteWidth;
+	_device->CreateBuffer(&bufferDesc, &vertexSubData, &_borderVertexBuffer);
 }
 
 bool Game::CheckPuzzle()
@@ -485,7 +644,6 @@ const wchar_t* Game::GetFormattedTime(const double time)
 		format = format + L"0";
 	}
 	format = format + L"%d";
-
 
 	formatted.Format(format.c_str(), hours, minutes, seconds);
 	return formatted;

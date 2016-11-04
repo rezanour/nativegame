@@ -15,7 +15,7 @@ cbuffer VS_CONSTANT_BUFFER
     float2 pixelOffset;
     float2 texOffset;
     float2 screenSize;
-    float2 padding;
+    float2 stretch;
 };
 
 
